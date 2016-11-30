@@ -32,6 +32,7 @@
 #include "../geometry/subdivpatch1cached_intersector1.h"
 #include "../geometry/grid_aos_intersector1.h"
 #include "../geometry/object_intersector1.h"
+#include "../geometry/oriented.h"
 
 namespace embree
 { 
@@ -333,11 +334,17 @@ namespace embree
 
     DEFINE_INTERSECTOR1(BVH4Subdivpatch1Intersector1,BVH4Intersector1<0x1 COMMA true COMMA ArrayIntersector1<SubdivPatch1Intersector1 > >);
     DEFINE_INTERSECTOR1(BVH4Subdivpatch1CachedIntersector1,BVH4Intersector1<0x1 COMMA true COMMA SubdivPatch1CachedIntersector1>);
-
     DEFINE_INTERSECTOR1(BVH4GridAOSIntersector1,BVH4Intersector1<0x1 COMMA true COMMA GridAOSIntersector1>);
-
     DEFINE_INTERSECTOR1(BVH4VirtualIntersector1,BVH4Intersector1<0x1 COMMA false COMMA ArrayIntersector1<ObjectIntersector1> >);
-
     DEFINE_INTERSECTOR1(BVH4Triangle4vMBIntersector1Moeller,BVH4Intersector1<0x10 COMMA false COMMA ArrayIntersector1<TriangleNMblurIntersector1MoellerTrumbore<Triangle4vMB COMMA true> > >);
+
+	// oriented
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_FullPrecision,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::ref>>);
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_QuantizedUniform,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::uni332n>>);
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_QuantizedNonUniform,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::man332n>>);
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_CompressedUniform,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::uni332a>>);
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_CompressedNonUniform,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::man332a>>);
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_HalfSlabUniform,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::uni332b>>);
+    DEFINE_INTERSECTOR1(BVH4OrientedIntersector1_HalfSlabNonUniform,BVH4Intersector1<0x1 COMMA true COMMA oriented::CompressedBVHLeafIntersector1<oriented::man332b>>);
   }
 }

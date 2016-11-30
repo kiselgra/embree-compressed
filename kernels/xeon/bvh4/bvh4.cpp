@@ -44,6 +44,15 @@ namespace embree
   DECLARE_SYMBOL(Accel::Intersector1,BVH4Triangle4vMBIntersector1Moeller);
   DECLARE_SYMBOL(Accel::Intersector1,BVH4Subdivpatch1Intersector1);
   DECLARE_SYMBOL(Accel::Intersector1,BVH4Subdivpatch1CachedIntersector1);
+
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_FullPrecision);
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_QuantizedUniform);
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_QuantizedNonUniform);
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_CompressedUniform);
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_CompressedNonUniform);
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_HalfSlabUniform);
+  DECLARE_SYMBOL(Accel::Intersector1,BVH4OrientedIntersector1_HalfSlabNonUniform);
+
   DECLARE_SYMBOL(Accel::Intersector1,BVH4GridAOSIntersector1);
   DECLARE_SYMBOL(Accel::Intersector1,BVH4VirtualIntersector1);
 
@@ -143,6 +152,14 @@ namespace embree
   DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivPatch1CachedBuilderBinnedSAH);
   DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivGridEagerBuilderBinnedSAH);
 
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_FullPrecision);
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_QuantizedUniform);
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_QuantizedNonUniform);
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_CompressedUniform);
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_CompressedNonUniform);
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabUniform);
+  DECLARE_BUILDER(void,Scene,size_t,BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabNonUniform);
+
   DECLARE_BUILDER(void,TriangleMesh,size_t,BVH4Triangle4MeshRefitSAH);
   DECLARE_BUILDER(void,TriangleMesh,size_t,BVH4Triangle8MeshRefitSAH);
   DECLARE_BUILDER(void,TriangleMesh,size_t,BVH4Triangle4vMeshRefitSAH);
@@ -192,6 +209,14 @@ namespace embree
     SELECT_SYMBOL_DEFAULT_AVX_AVX512(features,BVH4SubdivPatch1CachedBuilderBinnedSAH);
     SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivGridEagerBuilderBinnedSAH);
 
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_FullPrecision);
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_QuantizedUniform);
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_QuantizedNonUniform);
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_CompressedUniform);
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_CompressedNonUniform);
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabUniform);
+    SELECT_SYMBOL_DEFAULT_AVX(features,BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabNonUniform);
+
     SELECT_SYMBOL_DEFAULT_AVX(features,BVH4Triangle4MeshRefitSAH);
     SELECT_SYMBOL_AVX        (features,BVH4Triangle8MeshRefitSAH);
     SELECT_SYMBOL_DEFAULT_AVX(features,BVH4Triangle4vMeshRefitSAH);
@@ -220,6 +245,15 @@ namespace embree
     SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4Triangle4vMBIntersector1Moeller);
     SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4Subdivpatch1Intersector1);
     SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4Subdivpatch1CachedIntersector1);
+
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_FullPrecision);
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_QuantizedUniform);
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_QuantizedNonUniform);
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_CompressedUniform);
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_CompressedNonUniform);
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_HalfSlabUniform);
+    SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4OrientedIntersector1_HalfSlabNonUniform);
+
     SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4GridAOSIntersector1);
     SELECT_SYMBOL_DEFAULT_SSE41_AVX_AVX2(features,BVH4VirtualIntersector1);
 
@@ -909,6 +943,97 @@ namespace embree
     intersectors.intersector8  = BVH4GridAOSIntersector8;
     intersectors.intersector16 = BVH4GridAOSIntersector16;
     Builder* builder = BVH4SubdivGridEagerBuilderBinnedSAH(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_FullPrecision(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_FullPrecision;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_FullPrecision(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_QuantizedUniform(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_QuantizedUniform;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_QuantizedUniform(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_QuantizedNonUniform(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_QuantizedNonUniform;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_QuantizedNonUniform(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_CompressedUniform(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_CompressedUniform;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_CompressedUniform(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_CompressedNonUniform(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_CompressedNonUniform;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_CompressedNonUniform(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_HalfSlabUniform(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_HalfSlabUniform;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabUniform(accel,scene,LeafMode);
+    return new AccelInstance(accel,builder,intersectors);
+  }
+
+  Accel* BVH4::BVH4OrientedBVH_HalfSlabNonUniform(Scene* scene)
+  {
+    BVH4* accel = new BVH4(PrimitiveType2::type,scene,LeafMode);
+    Accel::Intersectors intersectors;
+    intersectors.ptr = accel; 
+    intersectors.intersector1  = BVH4OrientedIntersector1_HalfSlabNonUniform;
+    intersectors.intersector4  = nullptr;
+    intersectors.intersector8  = nullptr;
+    intersectors.intersector16 = nullptr;
+    Builder* builder = BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabNonUniform(accel,scene,LeafMode);
     return new AccelInstance(accel,builder,intersectors);
   }
 

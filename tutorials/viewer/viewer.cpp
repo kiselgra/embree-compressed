@@ -19,6 +19,8 @@
 #include "../common/tutorial/xml_loader.h"
 #include "../common/image/image.h"
 
+#include "viewer.h"
+
 namespace embree
 {
   /* name of the tutorial */
@@ -40,6 +42,16 @@ namespace embree
   static bool g_anim_mode = false;
   static bool g_loop_mode = false;
   static FileName keyframeList = "";
+
+  static std::vector<Vec3fa> cam_from;
+  static std::vector<Vec3fa> cam_to;
+  static std::vector<Vec3fa> cam_up;
+
+  size_t width = g_width;
+  size_t height = g_height;
+  Vec3fa* orgs;
+  Vec3fa* dirs;
+
 
   /* scene */
   OBJScene g_obj_scene;
@@ -70,10 +82,16 @@ namespace embree
       else if (tag == "-vu") g_camera.up = cin->getVec3fa();
       else if (tag == "-fov") g_camera.fov = cin->getFloat();
 
+	  /* parse bench camera parameters */
+	  else if (tag == "-cp") cam_from.push_back(cin->getVec3fa());
+	  else if (tag == "-ci") cam_to.push_back(cin->getVec3fa());
+	  else if (tag == "-cd") cam_to.push_back(cam_from.back() + cin->getVec3fa());
+	  else if (tag == "-cu") cam_up.push_back(cin->getVec3fa());
+
       /* frame buffer size */
       else if (tag == "-size") {
-        g_width = cin->getInt();
-        g_height = cin->getInt();
+        width = g_width = cin->getInt();
+        height = g_height = cin->getInt();
       }
 
       /* full screen mode */
@@ -96,6 +114,21 @@ namespace embree
 
       else if (tag == "-pregenerate") 
 	g_subdiv_mode = ",subdiv_accel=bvh4.grid.eager";
+
+	  else if (tag == "-oriented.ref")
+    g_subdiv_mode = ",subdiv_accel=oriented.ref";
+	  else if (tag == "-oriented.uni332non")
+    g_subdiv_mode = ",subdiv_accel=oriented.quantizeduni";
+	  else if (tag == "-oriented.pre332non")
+    g_subdiv_mode = ",subdiv_accel=oriented.quantizednon";
+	  else if (tag == "-oriented.uni332a")
+    g_subdiv_mode = ",subdiv_accel=oriented.compresseduni";
+	  else if (tag == "-oriented.pre332a")
+    g_subdiv_mode = ",subdiv_accel=oriented.compressednon";
+	  else if (tag == "-oriented.uni332b")
+    g_subdiv_mode = ",subdiv_accel=oriented.halfslabuni";
+	  else if (tag == "-oriented.pre332b")
+    g_subdiv_mode = ",subdiv_accel=oriented.halfslabnon";
 
       else if (tag == "-loop") 
 	g_loop_mode = true;
@@ -161,13 +194,38 @@ namespace embree
   
   void renderBenchmark(const FileName& fileName)
   {
+#ifdef INCOHERENT_BENCH
+	orgs = static_cast<Vec3fa*>(malloc(sizeof(Vec3fa)*g_height*g_width));
+	dirs = static_cast<Vec3fa*>(malloc(sizeof(Vec3fa)*g_height*g_width));
+#endif
+
     resize(g_width,g_height);
+
+	//for (size_t k = 0; k < cam_from.size() && k < cam_to.size() && k < cam_up.size(); ++k) {
+	size_t k = 0;
+	while (true) {
+
+		if (k < cam_from.size() && k < cam_to.size() && k < cam_up.size()) {
+		g_camera.from = cam_from[k];
+		g_camera.to = cam_to[k];
+		g_camera.up = cam_up[k];
+		g_camera.fov = 45.f;
+		std::cout << "CAM_POS: " << k << std::endl;
+		++k;
+		}
+		else if (k > 0)
+			break;
+
+
     AffineSpace3fa pixel2world = g_camera.pixel2world(g_width,g_height);
+
+
 
     double dt = 0.0f;
     size_t numTotalFrames = g_skipBenchmarkFrames + g_numBenchmarkFrames;
     for (size_t i=0; i<numTotalFrames; i++) 
     {
+
       double t0 = getSeconds();
       render(0.0f,pixel2world.l.vx,pixel2world.l.vy,pixel2world.l.vz,pixel2world.p);
       double t1 = getSeconds();
@@ -180,7 +238,18 @@ namespace embree
     std::cout << "frame [" << g_skipBenchmarkFrames << " - " << numTotalFrames << "] " << std::flush;
     std::cout << double(g_numBenchmarkFrames)/dt << "fps " << std::endl;
     std::cout << "BENCHMARK_RENDER " << double(g_numBenchmarkFrames)/dt << std::endl;
+
+	if (cam_from.size() == 0 || cam_to.size() == 0 || cam_up.size()  == 0)
+		break;
+
+	}
+
+#ifdef INCOHERENT_BENCH
+	free(orgs);
+	free(dirs);
+#endif
   }
+
 
   void renderToFile(const FileName& fileName)
   {

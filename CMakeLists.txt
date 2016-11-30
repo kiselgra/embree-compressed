@@ -25,6 +25,12 @@ SET(CPACK_RPM_PACKAGE_RELEASE 1)
 
 PROJECT(embree${EMBREE_VERSION_MAJOR})
 
+#############################
+# EIGEN for projective space
+find_package(Eigen3 REQUIRED)
+include_directories(${EIGEN3_INCLUDE_DIR})
+##############################
+
 CMAKE_MINIMUM_REQUIRED(VERSION 2.8.11)
 
 CONFIGURE_FILE(
@@ -296,3 +302,4 @@ add_custom_target(uninstall
 # Has to be last
 ##############################################################
 INCLUDE(CPack)
+

@@ -17,6 +17,8 @@
 #include "../common/tutorial/tutorial_device.h"
 #include "../common/tutorial/scene_device.h"
 
+#include "viewer.h"
+
 extern "C" ISPCScene* g_ispc_scene;
 extern "C" bool g_changed;
 
@@ -26,14 +28,16 @@ void** geomID_to_mesh = nullptr;
 int* geomID_to_type = nullptr;
 bool g_subdiv_mode = false;
 
+
 #define SPP 1
 
-//#define FORCE_FIXED_EDGE_TESSELLATION
-#define FIXED_EDGE_TESSELLATION_VALUE 3
+#define FORCE_FIXED_EDGE_TESSELLATION
+#define FIXED_EDGE_TESSELLATION_VALUE 64
 
 #define MAX_EDGE_LEVEL 64.0f
 #define MIN_EDGE_LEVEL  4.0f
 #define LEVEL_FACTOR   64.0f
+
 
 inline float updateEdgeLevel( ISPCSubdivMesh* mesh, const Vec3fa& cam_pos, const size_t e0, const size_t e1)
 {
@@ -127,7 +131,7 @@ void error_handler(const RTCError code, const char* str)
   exit(1);
 }
 
-bool g_use_smooth_normals = false;
+bool g_use_smooth_normals = true;
 void device_key_pressed(int key)
 {
   //printf("key = %\n",key);
@@ -136,6 +140,9 @@ void device_key_pressed(int key)
 }
 
 Vec3fa renderPixelEyeLight(float x, float y, const Vec3fa& vx, const Vec3fa& vy, const Vec3fa& vz, const Vec3fa& p);
+Vec3fa renderPixelIncoherent(float x, float y, const Vec3fa& vx, const Vec3fa& vy, const Vec3fa &vz, const Vec3fa& p);
+Vec3fa renderPixelCoherent(float x, float y, const Vec3fa& vx, const Vec3fa& vy, const Vec3fa &vz, const Vec3fa& p);
+Vec3fa makeIncoherentRay(Vec3fa &direction, BBox3fa &bounding_box_incoherent);
 
 
 /* called by the C++ code for initialization */
@@ -148,7 +155,13 @@ extern "C" void device_init (char* cfg)
   rtcSetErrorFunction(error_handler);
 
   /* set start render mode */
+#ifdef INCOHERENT_BENCH
+  renderPixel = renderPixelIncoherent;
+#elif defined(COHERENT_BENCH)
+  renderPixel = renderPixelCoherent;
+#else
   renderPixel = renderPixelStandard;
+#endif
   //renderPixel = renderPixelEyeLight;	
   key_pressed_handler = device_key_pressed;
 }
@@ -171,6 +184,10 @@ RTCScene convertScene(ISPCScene* scene_in)
 
   RTCScene scene_out = rtcNewScene((RTCSceneFlags)scene_flags,(RTCAlgorithmFlags) scene_aflags);
 
+#ifdef INCOHERENT_BENCH
+  BBox3fa bounding_box_incoherent = empty;
+#endif
+
   for (size_t i=0; i<scene_in->numSubdivMeshes; i++)
   {
     ISPCSubdivMesh* mesh = scene_in->subdiv[i];
@@ -192,13 +209,25 @@ RTCScene convertScene(ISPCScene* scene_in)
     rtcSetBuffer(scene_out, geomID, RTC_EDGE_CREASE_WEIGHT_BUFFER,   mesh->edge_crease_weights,   0, sizeof(float));
     rtcSetBuffer(scene_out, geomID, RTC_VERTEX_CREASE_INDEX_BUFFER,  mesh->vertex_creases,        0, sizeof(unsigned int));
     rtcSetBuffer(scene_out, geomID, RTC_VERTEX_CREASE_WEIGHT_BUFFER, mesh->vertex_crease_weights, 0, sizeof(float));
+
+#ifdef INCOHERENT_BENCH
+	for (int i = 0; i < mesh->numVertices; i++)
+		bounding_box_incoherent.extend(mesh->positions[i]);
+#endif
+
   }
+
 
   /* add all meshes to the scene */
   for (int i=0; i<scene_in->numMeshes; i++)
   {
     /* get ith mesh */
     ISPCMesh* mesh = scene_in->meshes[i];
+
+#ifdef INCOHERENT_BENCH
+	for (int i = 0; i < mesh->numVertices; i++)
+		bounding_box_incoherent.extend(mesh->positions[i]);
+#endif
 
     /* create a triangle mesh */
     unsigned int geomID = rtcNewTriangleMesh (scene_out, RTC_GEOMETRY_STATIC, mesh->numTriangles, mesh->numVertices);
@@ -210,6 +239,14 @@ RTCScene convertScene(ISPCScene* scene_in)
     rtcSetBuffer(scene_out, geomID, RTC_VERTEX_BUFFER, mesh->positions, 0, sizeof(Vec3fa      ));
     rtcSetBuffer(scene_out, geomID, RTC_INDEX_BUFFER,  mesh->triangles, 0, sizeof(ISPCTriangle));
   }
+
+#ifdef INCOHERENT_BENCH
+	for (size_t y = 0; y < height; ++y)
+		for (size_t x = 0; x < width; ++x)
+			orgs[y*width+x] = makeIncoherentRay(dirs[y*width+x], bounding_box_incoherent);
+
+  std::cerr << "############# SUBD MESH BOUNDING BOX IS " << bounding_box_incoherent << "######################### \n";
+#endif
 
   /* commit changes to scene */
   return scene_out;
@@ -249,7 +286,7 @@ Vec3fa renderPixelStandard(float x, float y, const Vec3fa& vx, const Vec3fa& vy,
   }
 
   int materialID = 0;
-#if 1 // FIXME: pointer gather not implemented on ISPC for Xeon Phi
+// FIXME: pointer gather not implemented on ISPC for Xeon Phi
   if (geomID_to_type[ray.geomID] == 0)
    {
     ISPCMesh* mesh = g_ispc_scene->meshes[ray.geomID];
@@ -273,40 +310,7 @@ Vec3fa renderPixelStandard(float x, float y, const Vec3fa& vx, const Vec3fa& vy,
   {
    materialID = ((ISPCSubdivMesh*) geomID_to_mesh[ray.geomID])->materialID;    
   }
-#else
 
-  int geomID = ray.geomID;  
-  {
-    if (geomID_to_type[ray.geomID] == 0)
-      {
-       ISPCMesh* mesh = g_ispc_scene->meshes[geomID];
-    
-       foreach_unique (primID in ray.primID) 
-       {
-         ISPCTriangle* tri = &mesh->triangles[primID];
-      
-         /* load material ID */
-         materialID = tri->materialID;
-
-         /* interpolate shading normal */
-         if (mesh->normals) {
-          Vec3fa n0 = Vec3fa(mesh->normals[tri->v0]);
-          Vec3fa n1 = Vec3fa(mesh->normals[tri->v1]);
-          Vec3fa n2 = Vec3fa(mesh->normals[tri->v2]);
-          float u = ray.u, v = ray.v, w = 1.0f-ray.u-ray.v;
-          Ns = w*n0 + u*n1 + v*n2;
-         } else {
-          Ns = normalize(ray.Ng);
-         }
-      }
-     }
-    else
-    {
-     materialID = ((ISPCSubdivMesh*) geomID_to_mesh[geomID])->materialID; 
-    }
-
-  }
-#endif
   Ns = normalize(Ns);
   OBJMaterial* material = (OBJMaterial*) &g_ispc_scene->materials[materialID];
   color = Vec3fa(material->Kd);
@@ -317,6 +321,116 @@ Vec3fa renderPixelStandard(float x, float y, const Vec3fa& vx, const Vec3fa& vy,
   //Vec3fa Nf = dot(ray.dir,Ng) < 0.0f ? Ng : neg(Ng);
   color = color*dot(ray.dir,Nf);   // FIXME: *=
   return color;
+}
+
+
+
+
+
+
+
+
+Vec3fa renderPixelCoherent(float x, float y, const Vec3fa& vx, const Vec3fa& vy, const Vec3fa& vz, const Vec3fa& p)
+{
+	/* initialize ray */
+	RTCRay ray;
+	ray.org = p;
+	ray.dir = normalize(x*vx + y*vy + vz);
+	ray.tnear = 0.0f;
+	ray.tfar = inf;
+	ray.geomID = RTC_INVALID_GEOMETRY_ID;
+	ray.primID = RTC_INVALID_GEOMETRY_ID;
+	ray.mask = -1;
+	ray.time = 0;
+
+	/* intersect ray with scene */
+	rtcIntersect(g_scene, ray);
+
+	/* shade background black */
+	if (ray.geomID == RTC_INVALID_GEOMETRY_ID) return Vec3fa(0.0f);
+
+	/* shade all rays that hit something */
+	Vec3fa color = Vec3fa(1.0f);
+	
+	return color;
+}
+
+
+
+
+
+inline float frand(int& seed) {
+	seed = 7 * seed + 5;
+	return (seed & 0xFFFF) / (float)0xFFFF;
+}
+
+Vec3fa makeIncoherentRay(Vec3fa &direction, BBox3fa &bounding_box_incoherent){
+
+	Vec3fa f3_bb_min = bounding_box_incoherent.lower;
+	Vec3fa f3_bb_max = bounding_box_incoherent.upper;
+
+	Vec3fa pos1, pos2;
+	Vec3fa diam; 
+	diam = f3_bb_max - f3_bb_min;
+
+	float X = drand48();
+	float Y = drand48();
+	float Z = drand48();
+	pos1 = Vec3fa(
+				  X*diam.x + f3_bb_min.x,
+				  Y*diam.y + f3_bb_min.y,
+				  Z*diam.z + f3_bb_min.z);
+
+	X = drand48();
+	Y = drand48();
+	Z = drand48();
+
+	pos2 = Vec3fa(
+				  X*diam.x + f3_bb_min.x,
+				  Y*diam.y + f3_bb_min.y,
+				  Z*diam.z + f3_bb_min.z);
+
+	Vec3fa diff = pos2 - pos1;
+	direction = normalize(diff);
+	return pos1;
+}
+
+Vec3fa randColor(float value, float min, float max)
+{
+	srand((int)(65000 * (value - min) / (max - min)));
+	Vec3fa rgb;
+	rgb.x = (float(rand())/float(RAND_MAX));
+	rgb.y = (float(rand())/float(RAND_MAX));
+	rgb.z = (float(rand())/float(RAND_MAX));
+	return rgb;
+}
+
+
+/* task that renders a single screen tile */
+Vec3fa renderPixelIncoherent(float x, float y, const Vec3fa& vx, const Vec3fa& vy, const Vec3fa& vz, const Vec3fa& p)
+{
+
+	const int idx = static_cast<int>(y) * width + static_cast<int>(x);
+	RTCRay ray;
+	ray.org = orgs[idx];
+	ray.dir = dirs[idx];
+	ray.tnear = 0.0f;
+	ray.tfar = inf;
+	ray.geomID = RTC_INVALID_GEOMETRY_ID;
+	ray.primID = RTC_INVALID_GEOMETRY_ID;
+	ray.mask = -1;
+	ray.time = 0;
+
+	/* intersect ray with scene */
+	rtcIntersect(g_scene, ray);
+
+	/* shade background black */
+	if (ray.geomID == RTC_INVALID_GEOMETRY_ID) return Vec3fa(0.0f);
+
+	/* shade all rays that hit something */
+	//return randColor(float(ray.u), float(0.f), float(50.0f));
+
+	return Vec3fa(ray.u, ray.v,0.f);
 }
 
 /* task that renders a single screen tile */

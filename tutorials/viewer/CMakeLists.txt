@@ -16,3 +16,11 @@
 
 INCLUDE(tutorial)
 ADD_TUTORIAL(viewer)
+
+#if (INCOHERENT_BENCH)
+#	add_definitions(-DINCOHERENT_BENCH)
+#endif()
+#
+#if (COHERENT_BENCH)
+#	add_definitions(-DCOHERENT_BENCH)
+#endif()

@@ -90,6 +90,8 @@ ADD_ISPC_LIBRARY(embree ${EMBREE_LIB_TYPE}
   ../common/subdiv/subdivpatch1base.cpp
   ../common/subdiv/catmullclark_coefficients.cpp
 
+  geometry/oriented_node.cpp
+
   geometry/primitive.cpp
   geometry/instance_intersector1.cpp
   geometry/instance_intersector4.cpp
@@ -262,3 +264,4 @@ ENDIF()
 IF (WIN32)
     INSTALL(TARGETS embree DESTINATION bin COMPONENT examples)
 ENDIF()
+

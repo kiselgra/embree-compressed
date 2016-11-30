@@ -105,6 +105,21 @@ namespace embree
       else if (term == "-pregenerate") 
 	g_subdiv_mode = ",subdiv_accel=bvh4.grid.eager";
 
+	  else if (term == "-oriented.ref")
+    g_subdiv_mode = ",subdiv_accel=oriented.ref";
+	  else if (term == "-oriented.uni332non")
+    g_subdiv_mode = ",subdiv_accel=oriented.quantizeduni";
+	  else if (term == "-oriented.pre332non")
+    g_subdiv_mode = ",subdiv_accel=oriented.quantizednon";
+	  else if (term == "-oriented.uni332a")
+    g_subdiv_mode = ",subdiv_accel=oriented.compresseduni";
+	  else if (term == "-oriented.pre332a")
+    g_subdiv_mode = ",subdiv_accel=oriented.compressednon";
+	  else if (term == "-oriented.uni332b")
+    g_subdiv_mode = ",subdiv_accel=oriented.halfslabuni";
+	  else if (term == "-oriented.pre332b")
+    g_subdiv_mode = ",subdiv_accel=oriented.halfslabnon";
+
       /*! Skip unknown command line parameters. */
       else std::cerr << "Unknown command line parameter: " << getParameterString(cin, term) << std::endl;
 

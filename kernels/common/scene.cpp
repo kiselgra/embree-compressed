@@ -274,6 +274,15 @@ namespace embree
     else if (State::instance()->subdiv_accel == "bvh4.subdivpatch1"      ) accels.add(BVH4::BVH4SubdivPatch1(this));
     else if (State::instance()->subdiv_accel == "bvh4.subdivpatch1cached") accels.add(BVH4::BVH4SubdivPatch1Cached(this));
     else if (State::instance()->subdiv_accel == "bvh4.grid.eager"        ) accels.add(BVH4::BVH4SubdivGridEager(this));
+
+    else if (State::instance()->subdiv_accel == "oriented.ref"           ) accels.add(BVH4::BVH4OrientedBVH_FullPrecision(this));
+    else if (State::instance()->subdiv_accel == "oriented.quantizeduni"  ) accels.add(BVH4::BVH4OrientedBVH_QuantizedUniform(this));
+    else if (State::instance()->subdiv_accel == "oriented.quantizednon"  ) accels.add(BVH4::BVH4OrientedBVH_QuantizedNonUniform(this));
+    else if (State::instance()->subdiv_accel == "oriented.compresseduni" ) accels.add(BVH4::BVH4OrientedBVH_CompressedUniform(this));
+    else if (State::instance()->subdiv_accel == "oriented.compressednon" ) accels.add(BVH4::BVH4OrientedBVH_CompressedNonUniform(this));
+    else if (State::instance()->subdiv_accel == "oriented.halfslabuni"   ) accels.add(BVH4::BVH4OrientedBVH_HalfSlabUniform(this));
+    else if (State::instance()->subdiv_accel == "oriented.halfslabnon"   ) accels.add(BVH4::BVH4OrientedBVH_HalfSlabNonUniform(this));
+
     else THROW_RUNTIME_ERROR("unknown subdiv accel "+State::instance()->subdiv_accel);
   }
 

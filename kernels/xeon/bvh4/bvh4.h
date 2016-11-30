@@ -687,6 +687,15 @@ namespace embree
     static Accel* BVH4SubdivPatch1(Scene* scene);
     static Accel* BVH4SubdivPatch1Cached(Scene* scene);
     static Accel* BVH4SubdivGridEager(Scene* scene);
+
+    static Accel* BVH4OrientedBVH_FullPrecision(Scene* scene);
+    static Accel* BVH4OrientedBVH_QuantizedUniform(Scene* scene);
+    static Accel* BVH4OrientedBVH_QuantizedNonUniform(Scene* scene);
+    static Accel* BVH4OrientedBVH_CompressedUniform(Scene* scene);
+    static Accel* BVH4OrientedBVH_CompressedNonUniform(Scene* scene);
+    static Accel* BVH4OrientedBVH_HalfSlabUniform(Scene* scene);
+    static Accel* BVH4OrientedBVH_HalfSlabNonUniform(Scene* scene);
+
     static Accel* BVH4UserGeometry(Scene* scene);
     
     static Accel* BVH4BVH4Triangle4ObjectSplit(Scene* scene);

@@ -31,6 +31,8 @@
 #include "../geometry/subdivpatch1cached.h"
 #include "../geometry/grid_soa.h"
 
+#include "../geometry/oriented.h"
+
 namespace embree
 {
   namespace isa
@@ -235,6 +237,247 @@ namespace embree
         prims.clear();
       }
     };
+
+	template<typename node_t>
+	struct GenerateCompressedBVHLeaves {
+		typedef node_t node;
+		typedef FastAllocator::ThreadLocal Allocator;
+
+		int count(std::vector<CatmullClarkPatch3fa> &patches) {
+			return patches.size();
+		}
+		void generate_leaves(SubdivMesh* mesh, int geom, int prim, std::vector<CatmullClarkPatch3fa> &patches,
+			PrimInfo &s, mvector<PrimRef> &prims, const PrimInfo &base, std::vector<Vec2f> &uvs,std::vector<int> &qlevel, Allocator& alloc) {
+			for (int i = 0; i < patches.size(); i++) {
+				auto p = patches[i];
+				BBox3fa bounds = oriented::createCompressedBVHLeaf<node_t>(mesh, geom, prim, i, p, &prims[base.size() + s.size()], uvs,qlevel[i], alloc);
+				s.add(bounds);
+			}
+		}
+	};
+
+    template<typename Leafgen> struct BVH4OrientedBuilderBinnedSAHClass : public Builder, protected Leafgen
+    {
+      ALIGNED_STRUCT;
+
+      BVH4* bvh;
+      Scene* scene;
+      mvector<PrimRef> prims;
+      ParallelForForPrefixSumState<PrimInfo> pstate;
+      enum { fixed_subdiv_level = LEVEL_N +1};
+      enum { count_only, construct_too };
+      
+      BVH4OrientedBuilderBinnedSAHClass (BVH4* bvh, Scene* scene)
+        : bvh(bvh), scene(scene) {}
+
+
+	  bool subdivide_patch_flat_rec(SubdivMesh* mesh, unsigned geomID, unsigned primID, const CatmullClarkPatch3fa &patch, int pIdx, const std::vector<Vec2f> &patch_uvs, int N, int level, std::vector<CatmullClarkPatch3fa> &flat_patches, std::vector<Vec2f> &flat_uvs, std::vector<Vec3f> &patch_normals, std::vector<int> &qlevel){
+		  if (level >= N) {
+		      //we are at the lowest level!
+			  if (level >= 1) 
+				  patch_normals.push_back(Vec3f());
+			  return true;
+		  }
+
+		  array_t<CatmullClarkPatch3fa, 4> new_patches;
+		  patch.subdivide(new_patches);
+		  std::vector<Vec2f> new_uvs(16);
+		  oriented::createUvs(patch_uvs, pIdx, new_uvs);
+		  bool flatChild[4];
+		  int nextLevel = level + 1;
+		  std::vector<Vec3f> new_patch_normals;
+		  for (int i = 0; i < 4; i++){
+			  if (subdivide_patch_flat_rec(mesh, geomID, primID, new_patches[i], i, new_uvs, N, nextLevel, flat_patches, flat_uvs, new_patch_normals, qlevel)){
+				  flatChild[i] = true;
+			  }
+			  else{
+				  flatChild[i] = false;
+			  } 
+		  }
+		  bool allChildrenFlat = flatChild[0] & flatChild[1] & flatChild[2] & flatChild[3];
+		  if (allChildrenFlat){
+			  for (int i = 0; i < 4; i++){
+				  flat_patches.push_back(new_patches[i]);
+				  qlevel.push_back(N - level);
+				  flat_uvs.push_back(new_uvs[i * 4]);
+				  flat_uvs.push_back(new_uvs[i * 4 + 1]);
+				  flat_uvs.push_back(new_uvs[i * 4 + 2]);
+				  flat_uvs.push_back(new_uvs[i * 4 + 3]);
+			  }
+		  }
+		  else{
+			  for (int i = 0; i < 4; i++) {
+				  if (flatChild[i]){
+					  flat_patches.push_back(new_patches[i]);
+					  qlevel.push_back(N - level);
+					  flat_uvs.push_back(new_uvs[i * 4]);
+					  flat_uvs.push_back(new_uvs[i * 4 + 1]);
+					  flat_uvs.push_back(new_uvs[i * 4 + 2]);
+					  flat_uvs.push_back(new_uvs[i * 4 + 3]);
+				  }
+			  }
+		  }
+		  return false;
+
+	  }
+
+	  template<int M> std::vector<CatmullClarkPatch3fa> subdivide_patch_flat(SubdivMesh* mesh, unsigned geomId, unsigned patchId, GeneralCatmullClarkPatch3fa &patch, int N, std::vector<Vec2f> &flat_uvs, std::vector<int> &qlevel) {
+		  std::vector<CatmullClarkPatch3fa> flat_patches;
+		  array_t<CatmullClarkPatch3fa, GeneralCatmullClarkPatch3fa::SIZE> tmp1;
+		  size_t n;
+		  patch.subdivide(tmp1, n);
+		  assert(n == 4);
+		  
+		  std::vector<Vec2f> first_uvs;
+		  oriented::createFirstSubdUvs(first_uvs);
+
+
+		  GeneralCatmullClarkPatch3fa::fix_quad_ring_order(tmp1);
+
+		  std::vector<Vec3f> normals;
+		  for (int i = 0; i < 4; i++){
+			  subdivide_patch_flat_rec(mesh, geomId,patchId, tmp1[i],i,first_uvs, N, 2,flat_patches, flat_uvs,normals,qlevel);
+		  }
+		  
+		  if (flat_patches.size() * 4 != flat_uvs.size())
+			  std::cerr << "subd patches:" << flat_patches.size() << " and uvs " << flat_uvs.size() << "\n";
+		  return flat_patches;
+	  }
+
+
+
+
+
+      void build(size_t, size_t) 
+      {
+        /* skip build for empty scene */
+	const size_t numPrimitives = scene->getNumPrimitives<SubdivMesh,1>();
+        if (numPrimitives == 0) {
+          prims.resize(numPrimitives);
+          bvh->set(BVH4::emptyNode,empty,0);
+          return;
+        }
+        bvh->alloc.reset();
+
+        double t0 = bvh->preBuild(TOSTRING(isa) "::BVH4SubdivGridEagerBuilderBinnedSAH");
+
+        auto progress = [&] (size_t dn) { bvh->scene->progressMonitor(dn); };
+        auto virtualprogress = BuildProgressMonitorFromClosure(progress);
+
+        /* initialize all half edge structures */
+        Scene::Iterator<SubdivMesh> iter(scene);
+		
+		//OBJMaterial* material = (OBJMaterial*)&g_ispc_scene->materials[materialID];
+        for (size_t i=0; i<iter.size(); i++) // FIXME: parallelize
+          if (iter[i]) iter[i]->initializeHalfEdgeStructures();
+        
+        /* initialize allocator and parallel_for_for_prefix_sum */
+        pstate.init(iter,size_t(1024));
+
+        PrimInfo pinfo 
+	    = parallel_for_for_prefix_sum(pstate, iter, PrimInfo(empty), 
+		[&](SubdivMesh* mesh, const range<size_t>& r, size_t k, const PrimInfo& base) -> PrimInfo
+        	{
+        	  size_t s = 0;
+        	  for (size_t f=r.begin(); f!=r.end(); ++f) 
+        	  {
+        	    if (!mesh->valid(f)) continue;
+		    auto half_edge = mesh->getHalfEdge(f);
+		    const auto &vertex_buffer = mesh->getVertexBuffer();
+		    GeneralCatmullClarkPatch3fa patch;
+		    patch.init(half_edge, vertex_buffer.getPtr(), vertex_buffer.getStride());
+			std::vector<Vec2f> uvs;
+			std::vector<int> qlevel;
+			std::vector<CatmullClarkPatch3fa> patches = subdivide_patch_flat<count_only>(mesh,mesh->id,f, patch, fixed_subdiv_level, uvs,qlevel);
+		    s += Leafgen::count(patches);
+        	  }
+        	  return PrimInfo(s,empty,empty);
+        	}, [](const PrimInfo& a, const PrimInfo& b) -> PrimInfo { return PrimInfo(a.size()+b.size(),empty,empty); }
+	);
+
+		//std::cout << "prepared: " << pinfo.size() << std::endl;
+		//std::cout << "node_t size: " << sizeof(typename Leafgen::node) << std::endl;
+
+        prims.resize(pinfo.size());
+        if (pinfo.size() == 0) {
+          bvh->set(BVH4::emptyNode,empty,0);
+          return;
+        }
+
+		size_t dummy = 0;
+
+        pinfo 
+	    = parallel_for_for_prefix_sum(pstate, iter, PrimInfo(empty), 
+		[&](SubdivMesh* mesh, const range<size_t>& r, size_t k, const PrimInfo& base) -> PrimInfo
+		{
+		  FastAllocator::ThreadLocal& alloc = *bvh->alloc.threadLocal();
+		  
+		  PrimInfo s(empty);
+		  for (size_t f=r.begin(); f!=r.end(); ++f) {
+		    if (!mesh->valid(f)) continue;
+		    auto half_edge = mesh->getHalfEdge(f);
+		    const auto &vertex_buffer = mesh->getVertexBuffer();
+		    // do subdivision
+		    GeneralCatmullClarkPatch3fa patch;
+		    patch.init(half_edge, vertex_buffer.getPtr(), vertex_buffer.getStride());
+
+			std::vector<Vec2f> uvs;
+			std::vector<int> qlevel;
+			std::vector<CatmullClarkPatch3fa> patches = subdivide_patch_flat<construct_too>(mesh, mesh->id,f, patch, fixed_subdiv_level, uvs,qlevel);
+		    Leafgen::generate_leaves(mesh,mesh->id, f, patches, s, prims, base,uvs,qlevel, alloc);
+			++dummy;
+		  }
+		  return s;
+		}, [](const PrimInfo& a, const PrimInfo& b) -> PrimInfo { return PrimInfo::merge(a,b); }
+	);
+
+	//size_t count = prims.size();
+	//float rotSize = count * sizeof(LinearSpace3fa) / 1024.f / 1024.f;
+	//float projSize = count * sizeof(Matrix3f) / 1024.f /  1024.f;
+	//float clipSize = count * sizeof(BBox3fa) / 1024.f /  1024.f;
+	//float pointerSize = count * (sizeof(typename Leafgen::node*) + sizeof(Vec2f*)) / 1024.f /  1024.f;
+	//float uvSize = count * sizeof(Vec2f) * 2 / 1024.f / 1024.f;
+	//float intSize = count * sizeof(int) * 2 / 1024.f / 1024.f;
+	//float leafSize = count * sizeof(typename oriented::CompressedBVHLeaf<typename Leafgen::node>) / 1024.f / 1024.f;
+	//float nodeSize = count * oriented::g_items * sizeof(typename Leafgen::node) / 1024.f / 1024.f;
+
+	//std::cout << "Leaves: " << count << "\n" <<
+	//			 "LeafSize: " << leafSize << "\n" <<
+	//			 "sum: " << (rotSize + projSize + clipSize + pointerSize + uvSize + intSize) << "\n" <<
+	//			 "nodes: " << nodeSize << std::endl;
+
+
+	//std::cout << "used: " << pinfo.size() << "(" << dummy << ")" << std::endl;
+	//std::cout << "size: " << prims.size() * sizeof(prims[0]) / 1024.f / 1024.f << std::endl;
+	//std::cout << "primsize: " << sizeof(prims[0]) << std::endl;
+
+        BVH4::NodeRef root;
+        BVHBuilderBinnedSAH::build_reduce<BVH4::NodeRef>(root,BVH4::CreateAlloc(bvh),size_t(0),BVH4::CreateNode(bvh),BVH4::NoRotate(),
+           [&] (const BVHBuilderBinnedSAH::BuildRecord& current, Allocator* alloc) -> int 
+	   {
+             if (current.pinfo.size() != 1) THROW_RUNTIME_ERROR("bvh4_builder_subdiv: internal error");
+             *current.parent = (size_t) prims[current.prims.begin()].ID();
+             return 0;
+           },
+           progress,
+           prims.data(),pinfo,BVH4::N,BVH4::maxBuildDepthLeaf,1,1,1,1.0f,1.0f
+	);
+        bvh->set(root,pinfo.geomBounds,pinfo.size());
+        
+	/* clear temporary data for static geometry */
+	bool staticGeom = scene->isStatic();
+	if (staticGeom) prims.clear();
+        bvh->alloc.cleanup();
+        bvh->postBuild(t0);
+
+      }
+
+      void clear() {
+        prims.clear();
+      }
+    };
+
+
 
     // =======================================================================================================
     // =======================================================================================================
@@ -446,5 +689,15 @@ namespace embree
     Builder* BVH4SubdivPatch1BuilderBinnedSAH   (void* bvh, Scene* scene, size_t mode) { return new BVH4SubdivPatch1BuilderBinnedSAHClass((BVH4*)bvh,scene); }
     Builder* BVH4SubdivGridEagerBuilderBinnedSAH   (void* bvh, Scene* scene, size_t mode) { return new BVH4SubdivGridEagerBuilderBinnedSAHClass((BVH4*)bvh,scene); }
     Builder* BVH4SubdivPatch1CachedBuilderBinnedSAH   (void* bvh, Scene* scene, size_t mode) { return new BVH4SubdivPatch1CachedBuilderBinnedSAHClass((BVH4*)bvh,scene); }
+
+	// oriented
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_FullPrecision (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::ref>>((BVH4*)bvh,scene); }
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_QuantizedUniform (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::uni332n>>((BVH4*)bvh,scene); }
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_QuantizedNonUniform (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::man332n>>((BVH4*)bvh,scene); }
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_CompressedUniform (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::uni332a>>((BVH4*)bvh,scene); }
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_CompressedNonUniform (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::man332a>>((BVH4*)bvh,scene); }
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabUniform (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::uni332b>>((BVH4*)bvh,scene); }
+	Builder* BVH4SubdivOrientedBuilderBinnedSAH_HalfSlabNonUniform (void* bvh, Scene* scene, size_t node) { return new BVH4OrientedBuilderBinnedSAHClass<GenerateCompressedBVHLeaves<oriented::man332b>>((BVH4*)bvh,scene); }
+
   }
 }

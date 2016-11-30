@@ -1,0 +1,35 @@
+-i bomberman-tentacles.obj
+-vp 18.21240425 20.05745888 15.46878433 
+-vi 0 0 0 
+-vd -18.21240425 -20.05745888 -15.46878433 
+-vu 0 1 0 
+-fov 90
+-size 1280 768
+-rtcore shader=default
+
+
+# uncomment desired box-type
+
+# reference box with floats
+#-oriented.ref
+
+
+# quantization types:
+# preXXX == non uniform
+# uniXXX == uniform
+
+
+# uncompressed box types
+#-oriented.pre332non
+#-oriented.uni332non
+
+# copressed box types
+-oriented.pre332a
+#-oriented.uni332a
+
+# half-slab compressed box with non-uniform quantization
+#-oriented.pre332b
+#-oriented.uni332b
+
+
+

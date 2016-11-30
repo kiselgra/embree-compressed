@@ -18,7 +18,7 @@
 
 /* configuration */
 #define EDGE_LEVEL 256.0f
-#define ENABLE_SMOOTH_NORMALS 0
+#define ENABLE_SMOOTH_NORMALS 1
 
 /* scene data */
 RTCScene g_scene = nullptr;

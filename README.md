@@ -1,6 +1,15 @@
 % Embree: High Performance Ray Tracing Kernels 2.6.2
 % Intel Corporation
 
+Our Changes
+===========
+
+This repository contains the Embree-Code of our ToG paper "A Compressed
+Representation for Ray Tracing Parametric Surfaces". The current Embree version
+can be found at https://github.com/embree. Note that our version branched off
+at an earlier date and that our contributed code is covered by the GNU GPL. For
+Embree's license see LICENSE.embree, for our changes see LICENSE.
+
 Embree Overview
 ===============
 
